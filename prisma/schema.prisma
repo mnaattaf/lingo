@@ -1,0 +1,456 @@
+generator client {
+ provider = "prisma-client-js"
+ engineType = "client"
+ output = "../node_modules/.prisma/client"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+enum Role {
+ PARENT
+ STUDENT
+ ADMIN
+}
+enum QuestionType {
+ MULTIPLE_CHOICE
+ FILL_BLANK
+ WORD_ORDER
+ MATCHING
+ IMAGE_SELECTION
+ TRANSLATION
+ ERROR_CORRECTION
+ LISTENING
+ DICTATION
+ READING
+ SPEAKING
+ WRITING
+}
+enum ReviewStatus {
+ DRAFT
+ AI_GENERATED
+ REVIEW_NEEDED
+ HUMAN_REVIEWED
+ APPROVED
+ REJECTED
+}
+enum SessionKind {
+ PLACEMENT
+ LESSON
+ REVIEW
+}
+enum SessionStatus {
+ ACTIVE
+ COMPLETED
+ ABANDONED
+}
+model User {
+ id String @id @default(cuid())
+ email String @unique
+ passwordHash String
+ role Role @default(PARENT)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ students ParentStudentLink[]
+ profile StudentProfile?
+}
+model StudentProfile {
+ id String @id @default(cuid())
+ userId String? @unique
+ user User? @relation(fields:[userId],references:[id],onDelete:SetNull)
+ nickname String
+ age Int
+ grade String
+ goalMinutes Int @default(10)
+ timezone String @default("Africa/Cairo")
+ placementCompleted Boolean @default(false)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ parents ParentStudentLink[]
+ sessions LearningSession[]
+ mastery StudentSkillMastery[]
+ reviews ReviewQueue[]
+ distractions StudentDistraction[]
+ weeklyMetrics WeeklyStudentMetric[]
+ patterns StudentLearningPattern[]
+ goals WeeklyGoal[]
+ xp XpEvent[]
+ streak Streak?
+ achievements StudentAchievement[]
+ characters StudentCharacterProgress[]
+ rewards StudentReward[]
+}
+model ParentStudentLink {
+ parentId String
+ studentId String
+ parent User @relation(fields:[parentId],references:[id],onDelete:Cascade)
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@id([parentId,studentId])
+ @@index([studentId])
+}
+model Course {
+ id String @id
+ title String
+ units Unit[]
+}
+model Unit {
+ id String @id
+ courseId String
+ course Course @relation(fields:[courseId],references:[id],onDelete:Cascade)
+ title String
+ position Int
+ lessons Lesson[]
+ @@unique([courseId,position])
+}
+model Lesson {
+ id String @id
+ unitId String
+ unit Unit @relation(fields:[unitId],references:[id],onDelete:Cascade)
+ title String
+ position Int
+ skillId String
+ skill Skill @relation(fields:[skillId],references:[id])
+ sessions LearningSession[]
+ @@unique([unitId,position])
+}
+model Skill {
+ id String @id
+ parentId String?
+ parent Skill? @relation("SkillTree",fields:[parentId],references:[id])
+ children Skill[] @relation("SkillTree")
+ title String
+ description String
+ objectives String[]
+ difficulty Int
+ cefr String
+ masteryThreshold Float @default(0.8)
+ prerequisites SkillPrerequisite[] @relation("Requires")
+ requiredBy SkillPrerequisite[] @relation("RequiredBy")
+ questions QuestionSkillMap[]
+ mastery StudentSkillMastery[]
+ reviews ReviewQueue[]
+ lessons Lesson[]
+ @@index([parentId])
+}
+model SkillPrerequisite {
+ skillId String
+ prerequisiteId String
+ skill Skill @relation("Requires",fields:[skillId],references:[id],onDelete:Cascade)
+ prerequisite Skill @relation("RequiredBy",fields:[prerequisiteId],references:[id])
+ @@id([skillId,prerequisiteId])
+}
+model Question {
+ id String @id
+ type QuestionType
+ prompt String
+ instruction String
+ correctAnswer String
+ explanation String
+ example String
+ difficulty Int
+ cefr String
+ vocabularyLevel String
+ estimatedTime Int
+ errorTags String[]
+ prerequisites String[]
+ subskillId String?
+ contentStatus ReviewStatus @default(DRAFT)
+ options QuestionOption[]
+ skills QuestionSkillMap[]
+ answers StudentAnswer[]
+ visuals QuestionVisualAsset[]
+ review ContentReviewStatus[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([contentStatus,difficulty,type])
+}
+model QuestionOption {
+ id String @id @default(cuid())
+ questionId String
+ question Question @relation(fields:[questionId],references:[id],onDelete:Cascade)
+ value String
+ position Int
+ errorTypeId String?
+ errorType ErrorType? @relation(fields:[errorTypeId],references:[id])
+ @@unique([questionId,position])
+}
+model QuestionSkillMap {
+ questionId String
+ skillId String
+ weight Float @default(1)
+ question Question @relation(fields:[questionId],references:[id],onDelete:Cascade)
+ skill Skill @relation(fields:[skillId],references:[id])
+ @@id([questionId,skillId])
+ @@index([skillId])
+}
+model LearningSession {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ lessonId String?
+ lesson Lesson? @relation(fields:[lessonId],references:[id])
+ kind SessionKind
+ status SessionStatus @default(ACTIVE)
+ startedAt DateTime @default(now())
+ endedAt DateTime?
+ activeMs Int @default(0)
+ lastHeartbeatAt DateTime @default(now())
+ currentQuestionId String?
+ questionStartedAt DateTime?
+ targetCount Int @default(6)
+ rescueStage Int @default(0)
+ answers StudentAnswer[]
+ events LearningBehaviorEvent[]
+ activity SessionActivity[]
+ focus FocusMetric[]
+ interventions Intervention[]
+ xp XpEvent[]
+ @@index([studentId,startedAt])
+}
+model StudentAnswer {
+ id String @id @default(cuid())
+ sessionId String
+ session LearningSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ questionId String
+ question Question @relation(fields:[questionId],references:[id])
+ answer String
+ correct Boolean
+ responseMs Int
+ hintsUsed Int @default(0)
+ skipped Boolean @default(false)
+ createdAt DateTime @default(now())
+ errors StudentError[]
+ @@unique([sessionId,questionId])
+ @@index([sessionId,createdAt])
+}
+model StudentSkillMastery {
+ studentId String
+ skillId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ skill Skill @relation(fields:[skillId],references:[id])
+ masteryScore Float @default(0.2)
+ confidenceScore Float @default(0)
+ attempts Int @default(0)
+ correctAttempts Int @default(0)
+ incorrectAttempts Int @default(0)
+ averageResponseTime Float @default(0)
+ lastAttemptAt DateTime?
+ lastCorrectAt DateTime?
+ retentionEstimate Float @default(0)
+ reviewDueAt DateTime?
+ updatedAt DateTime @updatedAt
+ @@id([studentId,skillId])
+ @@index([studentId,reviewDueAt])
+}
+model ErrorType {
+ id String @id
+ parentId String?
+ parent ErrorType? @relation("ErrorTree",fields:[parentId],references:[id])
+ children ErrorType[] @relation("ErrorTree")
+ title String
+ description String
+ options QuestionOption[]
+ errors StudentError[]
+}
+model StudentError {
+ id String @id @default(cuid())
+ answerId String
+ answer StudentAnswer @relation(fields:[answerId],references:[id],onDelete:Cascade)
+ errorTypeId String
+ errorType ErrorType @relation(fields:[errorTypeId],references:[id])
+ probability Float
+ evidence String
+ createdAt DateTime @default(now())
+ @@index([errorTypeId,createdAt])
+}
+model ReviewQueue {
+ studentId String
+ skillId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ skill Skill @relation(fields:[skillId],references:[id])
+ stage Int @default(0)
+ dueAt DateTime
+ lastResult Boolean?
+ updatedAt DateTime @updatedAt
+ @@id([studentId,skillId])
+ @@index([studentId,dueAt])
+}
+model LearningBehaviorEvent {
+ id String @id @default(cuid())
+ sessionId String
+ session LearningSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ type String
+ data Json
+ createdAt DateTime @default(now())
+ @@index([sessionId,createdAt])
+}
+model SessionActivity {
+ id String @id @default(cuid())
+ sessionId String
+ session LearningSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ startedAt DateTime
+ endedAt DateTime
+ activeMs Int
+ @@index([sessionId,startedAt])
+}
+model FocusMetric {
+ id String @id @default(cuid())
+ sessionId String
+ session LearningSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ score Float?
+ evidenceCount Int
+ indicators Json
+ createdAt DateTime @default(now())
+}
+model WeeklyStudentMetric {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ weekStart DateTime
+ metrics Json
+ @@unique([studentId,weekStart])
+}
+model StudentLearningPattern {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ kind String
+ evidenceCount Int
+ estimate Json
+ updatedAt DateTime @updatedAt
+ @@unique([studentId,kind])
+}
+model StudentDistraction {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ category String
+ source String @default("SELF_REPORTED")
+ weekStart DateTime
+ createdAt DateTime @default(now())
+ @@unique([studentId,weekStart])
+}
+model Intervention {
+ id String @id @default(cuid())
+ sessionId String
+ session LearningSession @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+ type String
+ reason String
+ metricsBefore Json
+ createdAt DateTime @default(now())
+ result InterventionResult?
+}
+model InterventionResult {
+ id String @id @default(cuid())
+ interventionId String @unique
+ intervention Intervention @relation(fields:[interventionId],references:[id],onDelete:Cascade)
+ metricsAfter Json
+ result String
+ createdAt DateTime @default(now())
+}
+model WeeklyGoal {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ skillId String
+ targetMastery Float
+ weekStart DateTime
+ completedAt DateTime?
+ @@unique([studentId,skillId,weekStart])
+}
+model XpEvent {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ sessionId String @unique
+ session LearningSession @relation(fields:[sessionId],references:[id])
+ amount Int
+ reason String
+ createdAt DateTime @default(now())
+}
+model Streak {
+ studentId String @id
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ current Int @default(0)
+ longest Int @default(0)
+ lastLearningDate String?
+}
+model Achievement {
+ id String @id
+ title String
+ description String
+ students StudentAchievement[]
+}
+model StudentAchievement {
+ studentId String
+ achievementId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ achievement Achievement @relation(fields:[achievementId],references:[id])
+ unlockedAt DateTime @default(now())
+ @@id([studentId,achievementId])
+}
+model Character {
+ id String @id
+ name String
+ function String
+ assetId String?
+ asset VisualAsset? @relation(fields:[assetId],references:[id])
+ progress StudentCharacterProgress[]
+}
+model VisualAsset {
+ id String @id
+ url String
+ alt String
+ contentStatus ReviewStatus @default(DRAFT)
+ characters Character[]
+ questions QuestionVisualAsset[]
+}
+model QuestionVisualAsset {
+ questionId String
+ assetId String
+ question Question @relation(fields:[questionId],references:[id],onDelete:Cascade)
+ asset VisualAsset @relation(fields:[assetId],references:[id])
+ @@id([questionId,assetId])
+}
+model StudentCharacterProgress {
+ studentId String
+ characterId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ character Character @relation(fields:[characterId],references:[id])
+ unlockedAt DateTime @default(now())
+ @@id([studentId,characterId])
+}
+model StudentReward {
+ id String @id @default(cuid())
+ studentId String
+ student StudentProfile @relation(fields:[studentId],references:[id],onDelete:Cascade)
+ key String
+ reason String
+ createdAt DateTime @default(now())
+ @@unique([studentId,key])
+}
+model ContentPolicyRule {
+ id String @id
+ category String
+ description String
+ action String
+ version Int @default(1)
+ enabled Boolean @default(true)
+}
+model ContentReviewStatus {
+ id String @id @default(cuid())
+ questionId String
+ question Question @relation(fields:[questionId],references:[id],onDelete:Cascade)
+ status ReviewStatus
+ reviewer String
+ rationale String
+ createdAt DateTime @default(now())
+ @@index([questionId,createdAt])
+}
+model AuthThrottle {
+ key String @id
+ failures Int @default(0)
+ windowStart DateTime @default(now())
+ blockedUntil DateTime?
+}

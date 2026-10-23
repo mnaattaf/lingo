@@ -1,0 +1,10 @@
+export type SessionMetric={startedAt:Date;status:string;activeMs:number;kind:string;answers:{correct:boolean;createdAt:Date}[]};
+export function weekStart(now:Date,timezone='Africa/Cairo'){
+ const localDate=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+ const monday=new Date(localDate+'T00:00:00Z');monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+ const target=monday.getTime();let utc=target;
+ for(let i=0;i<3;i++){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc));const get=(type:string)=>parts.find(p=>p.type===type)!.value;const wall=Date.UTC(Number(get('year')),Number(get('month'))-1,Number(get('day')),Number(get('hour')),Number(get('minute')),Number(get('second')));utc+=target-wall;}
+ return new Date(utc);
+}
+export function weeklyMetrics(sessions:SessionMetric[],start:Date){const end=new Date(start.getTime()+7*86400000);const group=sessions.filter(s=>s.startedAt>=start&&s.startedAt<end);const answers=group.flatMap(s=>s.answers);const reviews=group.filter(s=>s.kind==='REVIEW').flatMap(s=>s.answers);return {activeMinutes:Math.round(group.reduce((n,s)=>n+s.activeMs,0)/60000),sessions:group.length,lessons:group.filter(s=>s.status==='COMPLETED'&&s.kind==='LESSON').length,questions:answers.length,accuracy:answers.length?Math.round(answers.filter(a=>a.correct).length/answers.length*100):null,completionRate:group.length?Math.round(group.filter(s=>s.status==='COMPLETED').length/group.length*100):null,reviewPerformance:reviews.length?Math.round(reviews.filter(a=>a.correct).length/reviews.length*100):null};}
+export function compareWeeks(current:ReturnType<typeof weeklyMetrics>,previous:ReturnType<typeof weeklyMetrics>){return Object.fromEntries(Object.keys(current).map(key=>{const k=key as keyof typeof current;return [key,{value:current[k],previous:previous[k],change:current[k]===null||previous[k]===null?null:current[k]!-previous[k]!}];}));}

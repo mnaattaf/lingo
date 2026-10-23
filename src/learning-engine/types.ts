@@ -1,0 +1,7 @@
+export type Skill = {id:string; parentId?:string; title:string; description:string; objectives:string[]; prerequisites:string[]; difficulty:number; cefr:string; masteryThreshold:number};
+export type QuestionType = 'MULTIPLE_CHOICE'|'FILL_BLANK'|'WORD_ORDER'|'MATCHING'|'IMAGE_SELECTION'|'TRANSLATION'|'ERROR_CORRECTION'|'LISTENING'|'DICTATION'|'READING'|'SPEAKING'|'WRITING';
+export type Question = {id:string; skillId:string; subskillId?:string; type:QuestionType; prompt:string; instruction:string; correctAnswer:string; options:string[]; optionErrors:Record<string,string>; explanation:string; example:string; difficulty:number; cefr:string; vocabularyLevel:string; estimatedTime:number; errorTags:string[]; prerequisites:string[]; visualAsset?:string; categories:string[]};
+export type Mastery = {masteryScore:number; confidenceScore:number; attempts:number; correctAttempts:number; incorrectAttempts:number; averageResponseTime:number; lastAttemptAt:Date|null; lastCorrectAt:Date|null; retentionEstimate:number; reviewDueAt:Date|null};
+export type Attempt = {correct:boolean; responseMs:number; hintsUsed:number; skipped?:boolean};
+export type ActionType = 'NEW_QUESTION'|'REVIEW_QUESTION'|'EASIER_QUESTION'|'HARDER_QUESTION'|'MICRO_EXPLANATION'|'WORKED_EXAMPLE'|'VISUAL_QUESTION'|'CHANGE_ACTIVITY'|'SHORT_RESET'|'END_SESSION';
+export type Action = {type:ActionType; questionId?:string; skillId?:string; reason:string};

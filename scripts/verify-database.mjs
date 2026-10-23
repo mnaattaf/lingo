@@ -1,0 +1,6 @@
+import pg from 'pg';import {spawnSync} from 'node:child_process';
+const admin=new pg.Client({connectionString:process.env.DATABASE_URL});await admin.connect();const name='bloom_verify_'+Date.now();await admin.query('CREATE DATABASE "'+name+'"');
+const url=new URL(process.env.DATABASE_URL);url.pathname='/'+name;
+function run(file,args=[]){const result=spawnSync(process.execPath,[...args,file],{stdio:'inherit',env:{...process.env,DATABASE_URL:url.toString()}});if(result.status!==0)throw new Error('Verification step failed: '+file);}
+try{run('scripts/apply-migrations.mjs');run('scripts/apply-migrations.mjs');run('prisma/seed.ts',['--import','tsx']);run('prisma/seed.ts',['--import','tsx']);const client=new pg.Client({connectionString:url.toString()});await client.connect();const {rows}=await client.query('SELECT (SELECT count(*)::int FROM "Question") AS questions, (SELECT count(*)::int FROM "Skill") AS skills, (SELECT count(*)::int FROM "User") AS users, (SELECT count(*)::int FROM "_prisma_migrations") AS migrations');await client.end();if(rows[0].questions!==40||rows[0].skills!==22||rows[0].users!==0||rows[0].migrations!==2)throw new Error('Unexpected fresh seed counts');console.log('Fresh database, idempotent migrations and double seed verified:',rows[0]);}
+finally{await admin.query('DROP DATABASE "'+name+'" WITH (FORCE)');await admin.end();}

@@ -1,6 +1,6 @@
 import {engineConfig} from './config';import {unlocked} from './skill-graph';
 import type {Question,Skill,Mastery,Action} from './types';
-export type SelectionContext={questions:Question[];skills:Skill[];mastery:Record<string,Mastery>;answeredIds:string[];recentSkillIds:string[];recentTypes:string[];consecutiveFailures:number;rescueStage:number;focusDeterioration:boolean;elapsedMinutes:number;targetCount:number;now:Date;reviewOnly?:boolean;placement?:boolean;preferredSkillId?:string;weights?:Record<keyof typeof engineConfig.weights,number>};
+export type SelectionContext={questions:Question[];skills:Skill[];mastery:Record<string,Mastery>;answeredIds:string[];recentSkillIds:string[];recentTypes:string[];consecutiveFailures:number;rescueStage:number;focusDeterioration:boolean;elapsedMinutes:number;targetCount:number;now:Date;reviewOnly?:boolean;placement?:boolean;preferredSkillId?:string;recentQuestionIds?:string[];weights?:Record<keyof typeof engineConfig.weights,number>};
 export function nextBestAction(c:SelectionContext):Action{
  if(c.answeredIds.length>=c.targetCount||c.elapsedMinutes>=engineConfig.maxSessionMinutes)return {type:'END_SESSION',reason:'اكتملت خطوات اليوم، أحسنت!'};
  if(c.focusDeterioration&&c.rescueStage===0)return {type:'SHORT_RESET',reason:'لنأخذ استراحة قصيرة ثم نجرب نشاطًا مختلفًا.'};
@@ -20,6 +20,8 @@ export function nextBestAction(c:SelectionContext):Action{
   else if(c.preferredSkillId){const current=pool.filter(q=>q.skillId===c.preferredSkillId);if(current.length)pool=current;}
  }
  if(c.rescueStage>=2){const easy=pool.filter(q=>q.skillId===c.recentSkillIds.at(-1)&&q.difficulty<=1);if(easy.length)pool=easy;}
+ // Prefer unseen alternatives inside the chosen learning/review bucket. Never suppress a due skill.
+ const fresh=pool.filter(q=>!c.recentQuestionIds?.includes(q.id));if(fresh.length)pool=fresh;
  const ranked=pool.map(q=>{const m=c.mastery[q.skillId];const recent=c.recentSkillIds.slice(-2);const variety=(c.recentTypes.at(-1)!==q.type? .5:0)+(recent.includes(q.skillId)?0:.5);const fit=1-Math.min(1,Math.abs(q.difficulty-(1+(m?.masteryScore??.2)*2))/3);const prereqNeed=c.skills.some(s=>s.prerequisites.includes(q.skillId))?1:0;
  return {q,score:w.weakness*(1-(m?.masteryScore??.2))+w.reviewDue*(due(q.skillId)?1:0)+w.prerequisite*prereqNeed+w.difficultyFit*fit+w.variety*variety-(recent.length===2&&recent.every(s=>s===q.skillId)?.25:0)};}).sort((a,b)=>b.score-a.score||a.q.id.localeCompare(b.q.id));
  const q=ranked[0]?.q;if(!q)return {type:'END_SESSION',reason:'انتهت الأنشطة المناسبة المتاحة اليوم.'};

@@ -66,3 +66,36 @@ describe('question presentation',()=>{
  it('is deterministic and preserves every repeated token',()=>{const words=['I','see','a','cat','and','a','dog'];expect(orderedOptions(words,'s1','q1')).toEqual(orderedOptions(words,'s1','q1'));expect(orderedOptions(words,'s1','q1').sort()).toEqual([...words].sort());});
  it('does not expose the authored first option as the correct slot in every session',()=>{const positions=Array.from({length:20},(_,i)=>orderedOptions(['correct','second','third'],'session-'+i,'q1').indexOf('correct'));expect(new Set(positions).size).toBe(3);});
 });
+
+import {variantAt,variantPage,variantCount} from '../content-generation/catalog';
+describe('versioned exercise catalog',()=>{
+ it('generates unique, answerable drafts without granting approval',()=>{
+  const prompts=new Set<string>();const ids=new Set<string>();
+  for(let i=0;i<variantCount;i++){
+   const q=variantAt(i);prompts.add(q.prompt);ids.add(q.id);
+   expect(q.contentStatus).toBe('REVIEW_NEEDED');
+   expect(new Set(q.options).size).toBe(3);
+   expect(q.options.filter(o=>o===q.correctAnswer)).toHaveLength(1);
+   expect(evaluate(q,q.correctAnswer).correct).toBe(true);
+   expect(skills.some(s=>s.id===q.skillId)).toBe(true);
+   expect(checkContent({origin:'human',text:q.prompt,categories:q.categories,ageSafe:true,educationallyValid:true,skillAligned:true,humanReviewed:false}).status).toBe('REVIEW_NEEDED');
+  }
+  expect(prompts.size).toBe(variantCount);expect(ids.size).toBe(variantCount);
+ });
+ it('has stable pagination and validates bounds',()=>{
+  expect(variantPage(20,3)).toEqual([variantAt(20),variantAt(21),variantAt(22)]);
+  expect(variantPage(variantCount,5)).toEqual([]);
+  expect(()=>variantAt(-1)).toThrow();expect(()=>variantAt(variantCount)).toThrow();expect(()=>variantPage(0,501)).toThrow();
+ });
+});
+describe('cross-session practice',()=>{
+ it('prefers a fresh alternative rather than repeating yesterday’s question',()=>{
+  const first=nextBestAction(context).questionId!;
+  expect(nextBestAction({...context,recentQuestionIds:[first]}).questionId).not.toBe(first);
+ });
+ it('does not remove due reviews when all questions have been seen',()=>{
+  const q=questions[0];const mastery={...initialMastery(),reviewDueAt:new Date(now.getTime()-1)};
+  const action=nextBestAction({...context,questions:[q],reviewOnly:true,recentQuestionIds:[q.id],mastery:{[q.skillId]:mastery}});
+  expect(action.questionId).toBe(q.id);expect(action.type).toBe('REVIEW_QUESTION');
+ });
+});
